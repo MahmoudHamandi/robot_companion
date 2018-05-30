@@ -1,4 +1,5 @@
 <launch>
+    <arg name="height_above_ground" default="1.6"/>
 	<group ns="spencer/sensors" >
 		<arg name="driver_launchfile" value="$(find astra_launch)/launch/astra.launch" /> <!-- Astra camera launch file -->
 
@@ -8,11 +9,25 @@
 		  <arg name="depth_registration" value="true"/>
 		</include>
 	</group>
+    <!-- node pkg="tf" type="tf_remap" name="tf_remapper" output="screen">
+      <rosparam param="mappings">
+        [{old: camera_rgb_optical_frame, new: /rgbd_front_top_rgb_optical_frame},
+        {old: camera_depth_optical_frame, new: /rgbd_front_top_depth_optical_frame}]
+      </rosparam>
+    </node -->
+
+    <!-- node name="tf1" pkg="tf" type="static_transform_publisher" args="0 0 $(arg height_above_ground) 0 0 0 base_footprint rgbd_front_top_depth_optical_frame 1"/-->
+    <!-- node name="tf2" pkg="tf" type="static_transform_publisher" args="0 0 $(arg height_above_ground) 0 1.5707 1.5707 base_footprint rgbd_front_top_rgb_optical_frame 1" /-->
     <include file="$(find spencer_people_tracking_launch)/launch/tracking_single_rgbd_sensor.launch">
 	  <arg name="load_driver" value="false"/>
 	  <arg name="use_upper_body_detector" value="true"/>
 	  <arg name="use_pcl_detector" value="true"/>
 	  <arg name="use_hog_detector" value="false"/> <!-- Only set to true if using GPU /-->
-	  <arg name="dummy_transforms" value="false"/>
+	  <arg name="dummy_transforms" value="true"/>
 	</include>
+    <include file="$(find turtlebot_gazebo)/launch/amcl_demo.launch" output="screen">
+      <arg name="map_file" value="$(find human_track)/maps/HamandiM_map.yaml"/>
+    </include>
+    <node pkg="human_track" name="ray_cast" type="ray_cast.py" output="screen"/>
+    <!-- node pkg="human_track" name="intention" type="intention.py" output="screen"/-->
 </launch>
