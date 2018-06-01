@@ -18,22 +18,22 @@ import scipy.misc
 #targets = {1: (-0.989295840263,1.9834952344)}
 #targets = {1: (2.0,2.0)}
 #targets = {1: (-0.8,-2), 0: (-0.19,0.74)}
-class navigation():
+class ray():
 
     def __init__(self, max_distance=2):
         self._map = None;
-	self._map_info = None;
+        self._map_info = None;
         self._inflated_map = None;
         self._tree = []
         self._max_dis = max_distance
         self._preprocessing = False
-        self._map_load = rospy.Subscriber("/map",OccupancyGrid, self.load_map);
-        self._target   = rospy.Subscriber("/human_location",Point, self.find_position);
-        self._pub      = rospy.Publisher("/human_obstacle",Point,queue_size=10);
-        self.test()
+        #self._map_load = rospy.Subscriber("/map",OccupancyGrid, self.load_map);
+        #self._target   = rospy.Subscriber("/human_location",Point, self.find_position);
+        #self._pub      = rospy.Publisher("/human_obstacle",Point,queue_size=10);
+        #self.test()
     def load_map(self,loaded_map):
-	self._map = loaded_map.data;
-	self._map_info = loaded_map.info;
+        self._map = loaded_map.data;
+        self._map_info = loaded_map.info;
         self.load_to_array()
         self.build_tree()
         self._preprocessing = True
@@ -162,6 +162,18 @@ class navigation():
         p.z = -1
         self._pub.publish(p)
         return -1,(0,0)
+    def find_position2(self,loc):
+
+        if self._preprocessing == True:
+            grid_x = loc[0]-self._map_info.origin.position.x
+            grid_x = grid_x/self._map_info.resolution
+            grid_y = loc[1]-self._map_info.origin.position.y
+            grid_y = grid_y/self._map_info.resolution
+            row = int(math.floor(grid_y))
+            col = int(math.floor(grid_x))
+            dist,loca = self.find_shortest((row,col))
+            return dist,(loc[0]+loca[0]*self._map_info.resolution,loca[1]+loca[1]*self._map_info.resolution)
+        return -1,(0,0)
     def find_shortest(self, loc):
         indeces = []
         height = self._map_info.height
@@ -187,7 +199,7 @@ class navigation():
 def main():
     rospy.init_node('ray_cast_node', anonymous=True)
     rate = rospy.Rate(1)
-    nav = navigation()
+    nav = ray()
     tested = True
     while not rospy.is_shutdown():
         if not tested:

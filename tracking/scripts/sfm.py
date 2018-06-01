@@ -18,19 +18,19 @@ class SFMSensor():
 		self._B = 0.79
 		self._d = 0.4
 		self._l = 0.59
-                self._alphas = [1.0,1.0,1.0,1.0] ## alpha, beta, gamma, delta
+                self._alphas = [1.0,1.0,1.0] ## alpha, beta, gamma, delta
 		self.count = 0
 		self.SfM = np.array([[0,0]]).T
 		self.human_vect = np.array([[0,0]]).T
 		self.obs_vect = np.array([[0,0]]).T
 		self.target_vect = np.array([[0,0]]).T
 		self.robot_vect = np.array([[0,0]]).T
-                self.human_robot = np.array([[0,0]]).T
+		self.human_robot = np.array([[0,0]]).T
 		self._robot_position = robot_position
-                self._human_position = human_position
-                self._robot_velocity = robot_velocity
-                self._human_data = []
-                self._old_position = None
+		self._human_position = human_position
+		self._robot_velocity = robot_velocity
+		self._human_data = []
+		self._old_position = self._human_position
 		self._lr = 0.5;
 		self.updated_position = None;
 		self.R = np.array([[1,0.2,0,0],[0.2,1,0,0],
@@ -45,6 +45,8 @@ class SFMSensor():
 		self.pred_distribution = np.array([[1,0.2,0,0],[0.2,1,0,0],
 		  								[0,0,1,0.2],[0,0,0.2,1]]);
 		self.updated_distribution = None;
+		self._obs_data = None
+		self._human_data = None
 
 
 	def predict(self, forces_vect, dt):
@@ -55,11 +57,12 @@ class SFMSensor():
 		self.pred_distribution = np.dot(np.dot(self.A(dt),self.updated_distribution),self.A(dt).T) + self.R;
 	
 	def update(self):
-		if self._robot.stepNum == 1:
+		if self.count == 0:
 			pos = [self._human_position[0],self._human_position[1]];
 			pos.append(0)
 			pos.append(0)
 			self.pred_position = np.reshape(pos,(4,1))
+			self.count += 1
 		z = np.reshape(self._human_position,(2,1)) + np.random.rand(2,1)*0.3 - 0.15; ##adding noise
 		K = np.dot(np.dot(self.C,self.pred_distribution),self.C.T) + self.Q;
 		K = np.linalg.inv(K);
@@ -82,18 +85,19 @@ class SFMSensor():
 			  max_f = f_norm;
 			f_new = f#f*1.0/f_norm if f_norm > 1.0 else f
 			self._alphas[i] = self._alphas[i] + self._lr*np.inner(f_new.flatten(),diff);
-		print (self.alpha)#, diff, max_f)
+		print (self.alphas)#, diff, max_f)
         
-        def learn_alphas(self):
+        def learn_alphas(self,dt):
                 self.calc_sfm()
                 self.update()
-                forces_vect = [self.target_vect,self.robot_vect,human_vect,obs_vect]
-                self.predict(forces_vect)
-                self.alpha(forces_vect)
+                #forces_vect = [self.target_vect,self.robot_vect,human_vect,obs_vect]
+                forces_vect = [self.robot_vect,self.human_vect,self.obs_vect]
+                self.predict(forces_vect,dt)
+                self.alphas(forces_vect)
 	
         def calc_sfm(self):
 		humans = self._create_human_data()
-		obstacles = self._create_obstacles_data()
+		#obstacles = self._create_obstacles_data()
 		location = self._human_position
 		## we might need to limit te magnitude of this vector
 		v_0 = - self._human_position + self._robot_position
@@ -104,20 +108,17 @@ class SFMSensor():
 			v = location - self._old_position
 			theta = math.atan2(v[1],v[0])
 			self._old_position = location
-		self.force(v_0,v,np.array([location[0],location[1],theta]) ,humans,obstacles)
+		self.forces(v_0,v,np.array([location[0],location[1],theta]) ,humans,self._obs_data)
 
 	def _create_obstacles_data(self):
-		## need to read from ray tracing code
-		data['distance'] = 0 
-	        data['position'] = self._human_position 
-		return data
+            pass
 
 	def _create_human_data(self):
                 ## reads human_data which is filled by a method subscribing to the TrackedPersons code
                 ## the input from human_data is a list of humans with their positions
                 ## even humans that are tracked and not detected are inserted, unless covariance very high
 		data = []
-		for obj in objects:
+		for obj in self._human_data:
 			data_object = {}
 			data_object['distance'] = np.linalg.norm(obj - self._human_position)
 			data_object['position'] = obj 
@@ -136,31 +137,32 @@ class SFMSensor():
 		"""
 		# force to target:
 		## assuming that target is in direction of motion, with magnitude 0.3 m/s
-                force_to_target = self._kappa *v*(0.3-np.linalg.norm(v))
+		force_to_target = self._kappa *v*(0.3-np.linalg.norm(v))
 		self.target_vect = np.reshape(force_to_target,(2,1));
-		## calculating force to robot 
-                force_to_robot = self._kappa *(v_0,v)
+		## calculating force to robot
+		force_to_robot = self._kappa *(v_0-v)
 		self.robot_vect = np.reshape(force_to_robot,(2,1));
 		## initializing human and obstacle vectors
-                self.human_vect = np.array([[0,0]], dtype=np.float64).T
+		self.human_vect = np.array([[0,0]], dtype=np.float64).T
 		self.obs_vect = np.array([[0,0]], dtype=np.float64).T
 		## calculating human forces
-                for human in humans:
-			pos = human['position']
+		for human in humans:
+		  	pos = human['position']
 			dis = human['distance']
 			w = self.weight(pose,pos)
 			f = self._A * math.exp(self._d - dis)/self._B
 			direction = pos - pose[0:2]
 			direction = direction /math.sqrt(np.sum(np.power(direction,2)))
+			direction = np.array([direction[0][0],direction[1][0]])
 			self.human_vect -= np.reshape(f*direction*w,(2,1))
 	        ## calculating obstacle force	
-                pos = obs['position']
+		pos = obs['position']
 		dis = obs['distance']
 		w = self.weight(pose,pos)
 		f = self._A * math.exp(self._d - dis)/self._B
 		direction = pos - pose[0:2]
 		direction = direction /math.sqrt(np.sum(np.power(direction,2)))
-		self.obs_vect -= np.reshape(f*direction*w,(2,1))
+		self.obs_vect -= np.reshape(f*np.array([direction[0][0],direction[1][0]])*w,(2,1))
 		
 	def weight(self,pose_0, pose_1):
 		"""
